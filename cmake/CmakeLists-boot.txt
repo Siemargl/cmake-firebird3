@@ -1,0 +1,294 @@
+
+#------------------------------------------------------------
+# make_boot.bat 
+
+#---- on generate stage must clean all generated source (but save icu) ------
+#---- for exclude mixing source from different parses stages --------------
+
+MESSAGE("Remove generated directories....")
+
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\yvalve)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\dsql)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\gpre\\std)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\burp)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\isql)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\utilities)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\alice)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\engine)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\jrd)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\auth\\SecurityDatabase)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\misc)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\msgs)
+FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\qli)
+
+MESSAGE("Copy autoconfig.h")
+FILE(REMOVE ${FB_ROOT_PATH}\\src\\include\\gen\\autoconfig.h)
+FILE(COPY ${FB_ROOT_PATH}\\src\\include\\gen\\autoconfig_msvc.h 
+DESTINATION ${FB_ROOT_PATH}\\src\\include\\)
+
+FILE(RENAME ${FB_ROOT_PATH}\\src\\include\\autoconfig_msvc.h 
+	    ${FB_ROOT_PATH}\\src\\include\\gen\\autoconfig.h)
+
+FILE(REMOVE ${FB_BIN_DIR}\\plugins\\engine12.dll)
+FILE(REMOVE ${FB_BIN_DIR}\\plugins\\libengine12.dll)
+
+MESSAGE("Creating directories....")
+MESSAGE(${FB_GEN_DIR})
+
+## Remove previously generated output, and recreate the directory hierarchy. 
+## Removes ICU - commented
+##FILE(REMOVE_RECURSE ${FB_GEN_DIR})
+
+foreach(var alice auth burp dsql gpre isql jrd misc msgs qli examples yvalve)
+    FILE(MAKE_DIRECTORY ${FB_GEN_DIR}\\${var})    
+endforeach()
+
+##FILE(REMOVE_RECURSE ${FB_GEN_DIR}\\utilities)
+foreach(var utilities utilities\\gstat auth\\SecurityDatabase gpre\\std)
+    FILE(MAKE_DIRECTORY ${FB_GEN_DIR}\\${var})    
+endforeach()
+
+FILE(MAKE_DIRECTORY ${FB_BIN_DIR}\\plugins)    
+FILE(MAKE_DIRECTORY ${FB_GEN_DIR}\\dbs)    
+
+
+
+#--------- create parser stage ---------------
+
+add_subdirectory(btyacc)
+
+set(FB_OBJ_DIR release)
+
+
+ADD_CUSTOM_TARGET(parsing 
+    DEPENDS btyacc 
+
+    COMMAND 
+	${CMAKE_BINARY_DIR}\\btyacc\\btyacc -l -d -S ${FB_ROOT_PATH}\\src\\dsql\\btyacc_fb.ske ${FB_ROOT_PATH}\\src\\dsql\\parse.y
+
+    COMMAND
+        copy y_tab.h ${FB_ROOT_PATH}\\src\\include\\gen\\parse.h
+    COMMAND
+    	copy y_tab.c ${FB_ROOT_PATH}\\src\\dsql\\parse.cpp
+    COMMAND
+	del y_tab.h y_tab.c /q
+   
+)
+
+
+# exec_program(${FB_ROOT_PATH}\\temp\\${FB_OBJ_DIR}\\btyacc\\btyacc 
+# ARGS "-l -d -S ${FB_ROOT_PATH}\\src\\dsql\\btyacc_fb.ske ${FB_ROOT_PATH}\\src\\dsql\\parse.y" 
+#RETURN_VALUE errorlevel)
+
+#--------- preboot stage ---------------
+
+
+add_subdirectory(gpre_boot)
+
+ADD_CUSTOM_TARGET(preprocess_boot ALL
+    DEPENDS gpre_boot 
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\gpre_boot\\gpre_boot.exe ${FB_BIN_DIR}
+
+    COMMAND 
+	${CMAKE_SOURCE_DIR}\\preprocess.bat BOOT
+)
+
+INCLUDE_DIRECTORIES(
+	../../src/include
+	../../src/include/gen
+)
+
+add_subdirectory(gpre_common)
+
+add_subdirectory(common)
+
+add_subdirectory(remote)
+
+add_subdirectory(yvalve)
+
+add_subdirectory(burp)
+
+add_subdirectory(alice)
+
+add_subdirectory(engine)
+
+add_subdirectory(ib_util)
+
+add_subdirectory(gbak)
+
+add_subdirectory(gpre)
+
+add_subdirectory(isql)
+
+#--------- copy preboot to binary dir ---------------
+ADD_CUSTOM_TARGET(stage_one 
+    DEPENDS isql gbak gpre 
+
+    COMMAND 
+	@echo Copy base binaries...
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\gpre\\gpre.exe ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\gbak\\gbak.exe ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\isql\\isql.exe ${FB_BIN_DIR}
+
+    COMMAND 
+	@findstr /V "@UDF_COMMENT@" ${FB_ROOT_PATH}\\builds\\install\\misc\\firebird.conf.in > ${FB_BIN_DIR}\\firebird.conf
+)
+
+if (MINGW)
+
+ADD_CUSTOM_TARGET(stage_one_dll 
+    DEPENDS fbclient engine12 ib_util
+
+    COMMAND 
+	@echo Copy base DLLs...
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icuuc30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icudt30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icuin30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\engine\\libengine12.dll ${FB_BIN_DIR}\\plugins
+
+    COMMAND 
+        rename ${FB_BIN_DIR}\\plugins\\libengine12.dll engine12.dll
+
+    COMMAND 
+        rem mt.exe -manifest ${CMAKE_SOURCE_DIR}\\engine12.dll.manifest -outputresource:${FB_BIN_DIR}\\plugins\\engine12.dll\;2  
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\ib_util\\libib_util.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\yvalve\\libfbclient.dll ${FB_BIN_DIR}
+)
+else (MINGW)
+#MSVS
+
+ADD_CUSTOM_TARGET(stage_one_dll 
+    DEPENDS fbclient engine12 ib_util
+
+    COMMAND 
+	@echo Copy base DLLs...
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icuuc30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icudt30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icuin30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\engine\\engine12.dll ${FB_BIN_DIR}\\plugins
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\ib_util\\ib_util.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\yvalve\\fbclient.dll ${FB_BIN_DIR}
+
+)
+endif (MINGW)
+
+#--------- databases ---------------
+FILE(REMOVE ${FB_GEN_DB_DIR}/dbs/security3.fdb)
+FILE(REMOVE ${FB_GEN_DB_DIR}/dbs/help.fdb)
+FILE(REMOVE ${FB_GEN_DB_DIR}/dbs/metadata.fdb)
+
+add_custom_command (
+  OUTPUT 
+	codes.cpp
+  COMMAND 
+	@echo done by preprocess_tree
+  COMMAND 
+	@copy ..\\misc\\*.* .
+)
+
+#ADD_CUSTOM_TARGET(create_dbs ALL
+add_custom_command (
+    OUTPUT 
+	${FB_GEN_DB_DIR}/dbs/security3.fdb
+
+    DEPENDS  stage_one stage_one_dll
+
+    COMMAND 
+	@echo Create databases...
+
+    COMMAND 
+	@echo create database '${FB_GEN_DB_DIR}/dbs/security3.fdb'\; | "${FB_BIN_DIR}\\isql" -q
+
+    COMMAND 
+   	@${FB_BIN_DIR}\\isql -q ${FB_GEN_DB_DIR}/dbs/security3.fdb -i ${FB_ROOT_PATH}\\src\\dbs\\security.sql
+
+    COMMAND 
+	@copy ${FB_GEN_DIR}\\dbs\\security3.fdb ${FB_GEN_DIR}\\dbs\\security.fdb > nul
+
+    COMMAND 
+   	@${FB_BIN_DIR}\\gbak -r ${FB_ROOT_PATH}\\builds\\misc\\metadata.gbak ${FB_GEN_DB_DIR}/dbs/metadata.fdb
+
+    COMMAND 
+   	${CMAKE_SOURCE_DIR}\\create_msgs.bat db
+
+    COMMAND 
+   	@${FB_BIN_DIR}\\gbak -r ${FB_ROOT_PATH}\\builds\\misc\\help.gbak ${FB_GEN_DB_DIR}/dbs/help.fdb
+
+    COMMAND 
+   	@copy ${FB_GEN_DIR}\\dbs\\metadata.fdb ${FB_GEN_DIR}\\dbs\\yachts.lnk > nul
+)
+
+
+#--------- messages ---------------
+ADD_CUSTOM_TARGET(preprocess_tree 
+#    DEPENDS create_dbs 
+
+    DEPENDS ${FB_GEN_DB_DIR}/dbs/security3.fdb
+
+    COMMAND 
+	@echo  Preprocessing the entire source tree...
+
+    COMMAND 
+	${CMAKE_SOURCE_DIR}\\preprocess.bat 
+)
+
+add_subdirectory(build_msg)
+
+add_subdirectory(codes)
+
+ADD_CUSTOM_TARGET(make_boot 
+    DEPENDS preprocess_tree build_msg codes
+
+    COMMAND 
+	@echo  Create messages...
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\codes\\codes.exe ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\build_msg\\build_msg.exe ${FB_BIN_DIR}
+
+    COMMAND 
+	${CMAKE_SOURCE_DIR}\\create_msgs.bat msg 
+
+    COMMAND 
+	@echo  Make_boot done...
+)
+
+#--------- next stage == make_all ---------------
+
+
+
+

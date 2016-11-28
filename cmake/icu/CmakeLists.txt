@@ -1,0 +1,170 @@
+cmake_minimum_required(VERSION 2.8)
+
+MACRO(MAKE_WINDOWS_PATH pathname)
+## by William A. Hoffman
+  # An extra \\ escape is necessary to get a \ through CMake's processing.
+  STRING(REPLACE "/" "\\" ${pathname} "${${pathname}}")
+  # Enclose with UNESCAPED quotes.  This means we need to escape our
+  # quotes once here, i.e. with \"
+  ##SET(${pathname} \"${${pathname}}\")
+ENDMACRO(MAKE_WINDOWS_PATH)
+
+set (ICU_ROOT_PATH ${CMAKE_BINARY_DIR}/..)
+set (ICU_BIN_PATH ${CMAKE_BINARY_DIR})
+set (ICU_SRC_PATH ${ICU_BIN_PATH}/../../extern/icu/source)
+set (ICU_RUN_PATH ${ICU_SRC_PATH}/../win/release/bin)
+set (ICU_MAK_PATH ${CMAKE_SOURCE_DIR})
+
+## minGW generator incorrect work
+##file(TO_NATIVE_PATH ${FB_ROOT_PATH} FB_ROOT_PATH)
+MAKE_WINDOWS_PATH(ICU_BIN_PATH)
+MAKE_WINDOWS_PATH(ICU_RUN_PATH)
+MAKE_WINDOWS_PATH(ICU_SRC_PATH)
+MAKE_WINDOWS_PATH(ICU_MAK_PATH)
+MESSAGE("ICU_BIN_PATH= "${ICU_BIN_PATH})
+MESSAGE("ICU_RUN_PATH= "${ICU_RUN_PATH})
+MESSAGE("ICU_SRC_PATH= "${ICU_SRC_PATH})
+MESSAGE("ICU_MAK_PATH= "${ICU_MAK_PATH})
+FILE(REMOVE_RECURSE ${ICU_RUN_PATH})
+FILE(MAKE_DIRECTORY ${ICU_RUN_PATH})    
+
+#-------MinGW32 support--------------------------------------
+if(MINGW)
+MESSAGE("MinGW support is experimental")
+ADD_DEFINITIONS(
+-D_M_IX86 -D_WIN32_IE=0x0500 -D_MSC_VER=1310
+)
+endif(MINGW)
+
+
+
+#-------build base shared libraries------------
+add_subdirectory(common)
+add_subdirectory(i18n)
+
+#creates void icudat for 1st stage utils linking
+add_subdirectory(stubdata)
+
+add_subdirectory(toolutil)
+
+#-------copy shared libs so tools can use it---
+
+ADD_CUSTOM_TARGET(copysharedlib ALL
+    DEPENDS icuuc30 icudt30 icuin30 icutu30
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\common\\icuuc30.dll ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\i18n\\icuin30.dll ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\stubdata\\icudt30.dll ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\toolutil\\icutu30.dll ${ICU_RUN_PATH}
+)
+
+
+#-------build data geterators------------------ 
+add_subdirectory(pkgdata)
+add_subdirectory(genrb)
+add_subdirectory(gennames)
+add_subdirectory(genpname)
+add_subdirectory(genprops)
+add_subdirectory(gennorm)
+add_subdirectory(gencnval)
+add_subdirectory(genuca)
+add_subdirectory(gensprep)
+add_subdirectory(makeconv)
+add_subdirectory(genbrk)
+add_subdirectory(genccode)
+add_subdirectory(gencmn)
+
+#-------copy tools------------
+ADD_CUSTOM_TARGET(copytools ALL
+    DEPENDS copysharedlib pkgdata genrb gennames genpname genprops gennorm gencnval genuca gensprep makeconv genbrk genccode gencmn
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\pkgdata\\pkgdata.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\genrb\\genrb.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\gennames\\gennames.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\genpname\\genpname.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\genprops\\genprops.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\gennorm\\gennorm.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\gencnval\\gencnval.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\genuca\\genuca.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\gensprep\\gensprep.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\makeconv\\makeconv.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\toolutil\\icutu30.dll ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\genbrk\\genbrk.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\genccode\\genccode.exe ${ICU_RUN_PATH}
+    COMMAND
+	copy ${ICU_BIN_PATH}\\gencmn\\gencmn.exe ${ICU_RUN_PATH}
+)
+
+#-------make test tools------------
+add_subdirectory(cintltst)
+add_subdirectory(ctestfw)
+add_subdirectory(decmn)
+add_subdirectory(derb)
+add_subdirectory(gentest)
+add_subdirectory(intltest)
+add_subdirectory(layout)
+add_subdirectory(layoutex)
+add_subdirectory(io)
+add_subdirectory(icuswap)
+add_subdirectory(makedata)
+
+#uconv  builds not MSVC
+#add_subdirectory(uconv)
+
+#add_subdirectory(iotest)
+
+
+ADD_CUSTOM_TARGET(copytesttools ALL
+    DEPENDS copytools cintltst ctestfw decmn derb gentest intltest layout layoutex io icuswap iotest
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\cintltst\\cintltst.exe ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\decmn\\decmn.exe ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\ctestfw\\ctestfw.dll ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\derb\\derb.exe ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\gentest\\gentest.exe ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\intltest\\intltest.exe ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\layout\\layout.dll ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\layoutex\\layoutex.dll ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\io\\icuio30.dll ${ICU_RUN_PATH}
+
+    COMMAND 
+	copy ${ICU_BIN_PATH}\\icuswap\\icuswap.exe ${ICU_RUN_PATH}
+
+#    COMMAND 
+#	copy ${ICU_BIN_PATH}\\iotest\\iotest.exe ${ICU_RUN_PATH}
+
+)
+

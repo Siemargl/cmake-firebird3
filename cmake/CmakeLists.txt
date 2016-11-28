@@ -1,0 +1,279 @@
+cmake_minimum_required(VERSION 2.8)
+
+if (MSYS)
+    message("This cmakefile is not for MSYS (slashes)")
+    return()
+endif()
+
+if (NOT WIN32)
+    message("This cmakefile is only for Win32/64 today")
+    return()
+endif()
+
+
+#------------------------------------------------------------
+# setenvvar.bat 
+
+# set (FB_PROCESSOR_ARCHITECTURE AMD64)
+
+## Default target CPU architecture is the native environment
+if (NOT DEFINED FB_PROCESSOR_ARCHITECTURE)
+    set (FB_PROCESSOR_ARCHITECTURE $ENV{PROCESSOR_ARCHITECTURE})
+endif()
+
+
+
+MACRO(MAKE_WINDOWS_PATH pathname)
+## by William A. Hoffman
+  # An extra \\ escape is necessary to get a \ through CMake's processing.
+  STRING(REPLACE "/" "\\" ${pathname} "${${pathname}}")
+  # Enclose with UNESCAPED quotes.  This means we need to escape our
+  # quotes once here, i.e. with \"
+  ##SET(${pathname} \"${${pathname}}\")
+ENDMACRO(MAKE_WINDOWS_PATH)
+
+set (SERVER_NAME localhost)
+set (FB_ROOT_PATH ${CMAKE_SOURCE_DIR}/../..)
+set (FB_BIN_DIR ${FB_ROOT_PATH}/bin)
+set (CMAKE_BIN_PATH ${CMAKE_BINARY_DIR})
+
+## minGW generator incorrect work - put / instead of \\
+##file(TO_NATIVE_PATH ${FB_ROOT_PATH} FB_ROOT_PATH)
+MAKE_WINDOWS_PATH(FB_ROOT_PATH)
+MAKE_WINDOWS_PATH(FB_BIN_DIR)
+MAKE_WINDOWS_PATH(CMAKE_BIN_PATH)
+#message(path_test__ ${FB_ROOT_PATH})
+
+
+file(TO_CMAKE_PATH ${FB_ROOT_PATH} FB_DB_PATH)
+
+include_directories ("../src/include,../src/include/gen")
+
+set (FB_TARGET_PLATFORM Win32)
+# If MSVC >= 8 then we can test for processor architecture
+# We certainly don't want to try and set platform=x64 if MSVC7 is installed
+if (NOT $ENV{MSVC_VERSION} LESS 8) 
+
+    if (${FB_PROCESSOR_ARCHITECTURE} strequal x86) 
+    set (FB_TARGET_PLATFORM Win32)
+    endif()
+
+    if (${FB_PROCESSOR_ARCHITECTURE} strequal AMD64) 
+    set (FB_TARGET_PLATFORM x64)
+    endif()
+
+endif()
+
+set (FB_OUTPUT_DIR ${FB_ROOT_PATH}\\output_${FB_TARGET_PLATFORM})
+set (FB_TEMP_DIR ${FB_ROOT_PATH}\\temp\\${FB_TARGET_PLATFORM})
+set (FB_INSTALL_SCRIPTS ${FB_ROOT_PATH}\\builds\\install\\arch-specific\\win32)
+set (FB_GEN_DIR ${FB_ROOT_PATH}\\gen)
+set (FB_GEN_DB_DIR ${FB_DB_PATH}/gen)
+set (FB_ICU_SOURCE_BIN ${FB_ROOT_PATH}\\extern\\icu\\win\\release\\bin)
+
+#---- set system environment for batches ---------
+set (env{FB_GEN_DIR} FB_GEN_DIR)
+set (env{FB_BIN_DIR} FB_BIN_DIR)
+set (env{FB_ROOT_PATH} FB_ROOT_PATH)
+
+
+
+MESSAGE(".")
+MESSAGE("Setting Environment Variables thus...")
+MESSAGE(vs_ver= ${VS_VER})
+if (DEFINED VS_VER_EXPRESS) 
+MESSAGE(vs_ver_express= ${vs_ver_express})
+endif()
+MESSAGE(platform= ${FB_TARGET_PLATFORM})
+MESSAGE(msvc_version= ${MSVC_VERSION})
+MESSAGE(db_path= ${FB_DB_PATH})
+MESSAGE(root_path= ${FB_ROOT_PATH})
+MESSAGE(server_name= ${SERVER_NAME})
+MESSAGE(.)
+MESSAGE("End of setenv")
+
+#MESSAGE(FB_ICU_SOURCE_BIN= ${FB_ICU_SOURCE_BIN})
+
+#-------MinGW32 support--------------------------------------
+if(MINGW)
+MESSAGE("MinGW support is experimental")
+ADD_DEFINITIONS(
+-D_M_IX86 -D_WIN32_IE=0x0500 -D_MSC_VER=1310 -D__MSVCRT_VERSION__=0x0601 -D_WIN32_WINNT=0x0500 -D_USE_32BIT_TIME_T
+)
+
+#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--subsystem,windows")
+
+if(PROFILE)
+
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg")
+SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
+SET(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pg")
+endif(PROFILE)
+
+
+endif(MINGW)
+
+
+if (DEFINED BOOT)
+
+INCLUDE (Cmakelists-Boot.txt)
+
+else(DEFINED BOOT)
+#------------------------------------------------------------
+# make_all.bat 
+
+
+
+INCLUDE_DIRECTORIES(
+	../../src/include
+	../../src/include/gen
+)
+
+add_subdirectory(gpre_common)
+
+add_subdirectory(common)
+
+add_subdirectory(remote)
+
+add_subdirectory(yvalve)
+
+add_subdirectory(burp)
+
+add_subdirectory(alice)
+
+add_subdirectory(engine)
+
+add_subdirectory(ib_util)
+
+add_subdirectory(gbak)
+
+add_subdirectory(gpre)
+
+add_subdirectory(isql)
+
+
+#--------- next stage == make_all ---------------
+add_subdirectory(fbserver)
+add_subdirectory(intl)
+add_subdirectory(fbrmclib)
+add_subdirectory(fbtrace)
+add_subdirectory(fbudf)
+add_subdirectory(ib_udf)
+add_subdirectory(udr_engine)
+
+#todo
+#add here rest of make_all.bat
+
+#--------- copy final version to binary dir ---------------
+ADD_CUSTOM_TARGET(stage_two 
+    DEPENDS isql gbak gpre 
+
+    COMMAND 
+	@echo Copy base binaries...
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\gpre\\gpre.exe ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\gbak\\gbak.exe ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\isql\\isql.exe ${FB_BIN_DIR}
+)
+
+if (MINGW)
+
+ADD_CUSTOM_TARGET(stage_two_dll 
+    DEPENDS fbclient engine12 ib_util
+
+    COMMAND 
+	@echo Copy base DLLs...
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icuuc30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icudt30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icuin30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\engine\\libengine12.dll ${FB_BIN_DIR}\\plugins
+
+    COMMAND 
+        del /Q ${FB_BIN_DIR}\\engine\\engine12.dll 
+
+    COMMAND 
+        rename ${FB_BIN_DIR}\\plugins\\libengine12.dll engine12.dll
+
+    COMMAND 
+        rem mt.exe -manifest ${CMAKE_SOURCE_DIR}\\engine12.dll.manifest -outputresource:${FB_BIN_DIR}\\plugins\\engine12.dll\;2  
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\ib_util\\libib_util.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\yvalve\\libfbclient.dll ${FB_BIN_DIR}
+)
+else (MINGW)
+#MSVS
+
+ADD_CUSTOM_TARGET(stage_two_dll 
+    DEPENDS fbclient engine12 ib_util
+
+    COMMAND 
+	@echo Copy base DLLs...
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icuuc30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icudt30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${FB_ICU_SOURCE_BIN}\\icuin30.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\engine\\engine12.dll ${FB_BIN_DIR}\\plugins
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\ib_util\\ib_util.dll ${FB_BIN_DIR}
+
+    COMMAND 
+        copy ${CMAKE_BIN_PATH}\\yvalve\\fbclient.dll ${FB_BIN_DIR}
+
+)
+endif (MINGW)
+
+ADD_CUSTOM_TARGET(make_all ALL
+    DEPENDS stage_two   stage_two_dll
+
+    COMMAND 
+	@echo  Make_all Done...
+)
+
+
+endif(DEFINED BOOT)
+
+
+
+# ---------- below are samples usage Cmake  -----------
+# ADD_CUSTOM_COMMAND(
+#   OUTPUT someoutput.txt
+#   COMMAND generate ${CMAKE_CURRENT_SOURCE_DIR}/someinput.txt ${CMAKE_CURRENT_BINARY_DIR}/someoutput.txt
+#   DEPENDS generate ${CMAKE_CURRENT_SOURCE_DIR}/someinput.txt
+#   )
+
+#This tells CMake how to build the file but does not actually add a rule to the build system. Another target must require it. One may create a custom target explicitly for this rule: 
+# ADD_CUSTOM_TARGET(driver ALL DEPENDS someoutput.txt)
+
+#or the file may be added as part of some other target: 
+# ADD_EXECUTABLE(product product.c someoutput.txt)
+
+#MESSAGE("$ENV{PATH}")
+
+#Reading variables will work in any version of CMake. Writing to them works in CMake 2.2 and higher using the following syntax: 
+#SET(ENV{HELLO} "World")
+
+#EXEC_PROGRAM(my-program OUTPUT_VARIABLE MY_OUTPUT)

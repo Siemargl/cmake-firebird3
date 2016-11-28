@@ -1,0 +1,27 @@
+SET (this_target makedata)
+
+#ADD_DEPENDENCIES(${this_target} copytesttools)
+
+#-------make data and test------------
+ ADD_CUSTOM_COMMAND(
+    OUTPUT icudt30l.dat 
+ 
+    DEPENDS copytesttools
+
+    COMMAND 
+	copy ${ICU_MAK_PATH}\\testdata.cmake ${ICU_SRC_PATH}\\test\\testdata
+
+    COMMAND 
+	cd ${ICU_SRC_PATH}\\data
+
+    COMMAND 
+	nmake /f ${ICU_MAK_PATH}\\makedata.cmake icumake=${ICU_SRC_PATH}\\data cfg=win\\release
+)
+
+ADD_CUSTOM_TARGET(makedata ALL
+	DEPENDS icudt30l.dat
+	
+	COMMAND @echo done
+)
+
+
